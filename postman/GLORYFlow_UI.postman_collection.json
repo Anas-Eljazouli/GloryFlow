@@ -1,0 +1,189 @@
+{
+  "info": {
+    "name": "GLORYFlow API (UI)",
+    "_postman_id": "bf0a9b7c-9f5f-40d6-8c7c-bjglory-ui",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8000/health",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "health"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Seed demo data",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "http://localhost:8000/admin/seed",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "admin",
+            "seed"
+          ]
+        }
+      }
+    },
+    {
+      "name": "List shipments",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8000/shipments",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "shipments"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Create shipment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"reference\": \"BJG-2025999\", \"direction\": \"import\", \"mode\": \"sea\", \"customer_id\": 2, \"incoterm\": \"FOB\", \"pol\": \"Shanghai\", \"pod\": \"Casablanca\", \"vessel\": \"MSC Zoe\", \"eta\": \"2025-08-05\", \"free_days\": 7}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/shipments",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "shipments"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Add container",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"shipment_id\": 1, \"code\": \"MSCU1234567\", \"size\": \"40HC\"}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/containers",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "containers"
+          ]
+        }
+      }
+    },
+    {
+      "name": "List documents (shipment_id=1)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8000/documents?shipment_id=1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "documents"
+          ],
+          "query": [
+            {
+              "key": "shipment_id",
+              "value": "1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Add document (BL)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"shipment_id\": 1, \"type\": \"BL\"}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/documents",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "documents"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Demurrage risk (shipment_id=1)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8000/kpi/demurrage_risk?shipment_id=1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "kpi",
+            "demurrage_risk"
+          ],
+          "query": [
+            {
+              "key": "shipment_id",
+              "value": "1"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

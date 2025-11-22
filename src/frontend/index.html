@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GLORYFlow — BJ GLORY LOGISTICS</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<!-- Dashboard Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-icon">📦</div>
+    <h1 class="brand-title">GLORYFlow</h1>
+    <p class="brand-subtitle">BJ GLORY LOGISTICS</p>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="#" class="nav-item active" data-page="dossiers">
+      <span class="nav-icon">📋</span>
+      <span>Dossiers</span>
+    </a>
+    <a href="#" class="nav-item" data-page="nouveau">
+      <span class="nav-icon">➕</span>
+      <span>Nouveau dossier</span>
+    </a>
+    <a href="#" class="nav-item" data-page="risque">
+      <span class="nav-icon">⚠️</span>
+      <span>Risque & Documents</span>
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <a href="https://portnet.ma" target="_blank" rel="noopener" class="portnet-link">
+      <span class="portnet-icon">🌐</span>
+      <span>Portnet Morocco</span>
+    </a>
+    <div class="sidebar-actions">
+      <button id="seedBtn" class="btn-icon" title="Charger données démo">🔄</button>
+      <button id="toggleDensity" class="btn-icon" title="Mode compact">⚡</button>
+      <button id="toggleFilters" class="btn-icon" title="Filtres">🔍</button>
+    </div>
+  </div>
+</aside>
+
+<!-- Filters Drawer -->
+<div id="filtersDrawer" class="drawer" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="filtersTitle">
+  <div class="drawer-backdrop" data-close></div>
+  <div class="drawer-panel">
+    <div class="drawer-header">
+      <h3 id="filtersTitle">Filtres</h3>
+      <button class="ghost" id="closeFiltersBtn" aria-label="Fermer">✕</button>
+    </div>
+    <form id="filtersForm" class="drawer-body">
+      <fieldset>
+        <legend>Direction</legend>
+        <label><input type="radio" name="direction" value="any" checked> Tous</label>
+        <label><input type="radio" name="direction" value="import"> Import</label>
+        <label><input type="radio" name="direction" value="export"> Export</label>
+      </fieldset>
+      <fieldset>
+        <legend>Mode</legend>
+        <label><input type="checkbox" name="mode" value="sea"> Mer</label>
+        <label><input type="checkbox" name="mode" value="air"> Air</label>
+        <label><input type="checkbox" name="mode" value="road"> Route</label>
+      </fieldset>
+      <fieldset>
+        <legend>ETA</legend>
+        <label>Du <input type="date" name="eta_min"></label>
+        <label>Au <input type="date" name="eta_max"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Free days</legend>
+        <label>Min <input type="number" name="fd_min" min="0"></label>
+        <label>Max <input type="number" name="fd_max" min="0"></label>
+      </fieldset>
+      <div class="drawer-actions">
+        <button type="button" id="clearFilters" class="ghost">Réinitialiser</button>
+        <button type="submit">Appliquer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Main Dashboard Content -->
+<main class="dashboard-main">
+  <header class="dashboard-header">
+    <div class="header-left">
+      <h2 id="pageTitle">Dossiers</h2>
+      <button id="refreshBtn" class="btn-refresh">🔄 Actualiser</button>
+    </div>
+  </header>
+
+  <!-- Page: Dossiers -->
+  <div class="page active" id="page-dossiers">
+    <section class="panel">
+      <div class="panel-toolbar">
+        <input id="searchInput" placeholder="Rechercher par référence, POL, POD…" class="search-input"/>
+        <button id="clearSearch" class="ghost">Effacer</button>
+      </div>
+      <div class="table-container">
+        <table id="shipmentsTable">
+          <thead>
+            <tr>
+              <th>#</th><th>Référence</th><th>Direction</th><th>Route</th><th>ETA</th><th>Free days</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- Page: Nouveau dossier -->
+  <div class="page" id="page-nouveau">
+    <section class="panel">
+      <h3 class="section-title">Créer un nouveau dossier</h3>
+      <form id="createShipmentForm">
+        <div class="form-grid">
+          <label>Référence <input name="reference" required placeholder="BJG-2025XXX"></label>
+          <label>Direction 
+            <select name="direction"><option>import</option><option>export</option></select>
+          </label>
+          <label>Mode
+            <select name="mode"><option>sea</option><option>air</option><option>road</option></select>
+          </label>
+          <label>Client (id) <input name="customer_id" type="number" value="2" min="1"></label>
+          <label>Incoterm <input name="incoterm" placeholder="FOB/CIF/EXW"></label>
+          <label>POL <input name="pol" placeholder="Shanghai"></label>
+          <label>POD <input name="pod" placeholder="Casablanca"></label>
+          <label>Navire <input name="vessel" placeholder="MSC Zoe"></label>
+          <label>ETA <input name="eta" type="date" required></label>
+          <label>Free days <input name="free_days" type="number" value="7" min="0"></label>
+        </div>
+        <button type="submit" class="btn-primary">Créer le dossier</button>
+      </form>
+    </section>
+  </div>
+
+  <!-- Page: Risque & Documents -->
+  <div class="page" id="page-risque">
+    <div class="risk-layout">
+      <section class="panel">
+        <h3 class="section-title">Risque de surestaries</h3>
+        <div id="riskContent" class="content-box"><p>Sélectionnez un dossier dans la page <strong>Dossiers</strong> puis cliquez <em>Risque</em>.</p></div>
+      </section>
+      <section class="panel">
+        <h3 class="section-title">Documents (BL, Invoice, Packing List)</h3>
+        <div id="docsContent" class="content-box"><p>Sélectionnez un dossier puis cliquez <em>Docs</em>.</p></div>
+      </section>
+      <section class="panel">
+        <h3 class="section-title">Ajouter un conteneur</h3>
+        <form id="addContainerForm">
+          <input type="hidden" name="shipment_id" id="containerShipmentId">
+          <label>Code conteneur (ISO 6346) <input name="code" placeholder="MSCU1234567" required></label>
+          <label>Taille <input name="size" placeholder="40HC" required></label>
+          <button type="submit" class="btn-primary">Ajouter</button>
+          <p class="hint">Astuce : utilisez un code valide des données démo.</p>
+        </form>
+      </section>
+    </div>
+  </div>
+</main>
+
+<!-- Modal: Ajouter un conteneur -->
+<div id="containerModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-card" role="document">
+    <div class="modal-header">
+      <h3 id="modalTitle">Ajouter un conteneur</h3>
+      <button class="ghost" id="closeModalBtn" aria-label="Fermer">✕</button>
+    </div>
+    <form id="modalAddContainerForm" class="modal-body">
+      <input type="hidden" name="shipment_id" id="modalShipmentId">
+      <label>Code conteneur (ISO 6346)
+        <input name="code" id="modalCode" placeholder="MSCU1234567" required>
+      </label>
+      <label>Taille
+        <input name="size" id="modalSize" placeholder="40HC" required>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="cancelModalBtn">Annuler</button>
+        <button type="submit">Ajouter</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<footer class="dashboard-footer"><small>Prototype académique — ENSEM • GLORYFlow</small></footer>
+<script src="/static/app.js"></script>
+</body></html>

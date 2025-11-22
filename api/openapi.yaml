@@ -1,0 +1,92 @@
+
+openapi: 3.1.3
+info:
+  title: GLORYFlow API
+  version: 0.2.0
+servers:
+  - url: http://localhost:8000
+paths:
+  /health:
+    get: { summary: Health check, responses: { '200': { description: OK } } }
+  /shipments:
+    get: { summary: List shipments, responses: { '200': { description: OK } } }
+    post:
+      summary: Create a shipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShipmentCreate'
+      responses: { '201': { description: Created } }
+  /shipments/{id}:
+    get:
+      summary: Get a shipment by id
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses: { '200': { description: OK }, '404': { description: Not found } }
+    patch:
+      summary: Update shipment fields
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses: { '200': { description: Updated } }
+  /containers:
+    post:
+      summary: Attach a container (ISO 6346 validation)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContainerCreate' }
+      responses: { '201': { description: Created } }
+  /documents:
+    get:
+      summary: List documents of a shipment
+      parameters: [ { name: shipment_id, in: query, required: true, schema: { type: integer } } ]
+      responses: { '200': { description: OK } }
+    post:
+      summary: Add a document record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shipment_id, type]
+              properties:
+                shipment_id: { type: integer }
+                type: { type: string, enum: [BL, Invoice, PackingList, DUM, MainLevee, Autre] }
+      responses: { '201': { description: Created } }
+  /admin/seed:
+    post: { summary: Seed demo data from CSV files, responses: { '200': { description: OK } } }
+  /kpi/demurrage_risk:
+    get:
+      summary: Compute demurrage risk for a shipment
+      parameters: [ { name: shipment_id, in: query, required: true, schema: { type: integer } } ]
+      responses: { '200': { description: Score and message } }
+components:
+  schemas:
+    ShipmentCreate:
+      type: object
+      required: [reference, direction, customer_id, pol, pod, eta]
+      properties:
+        reference: { type: string }
+        direction: { type: string, enum: [import, export] }
+        mode: { type: string, enum: [sea, air, road], default: sea }
+        customer_id: { type: integer }
+        incoterm: { type: string }
+        pol: { type: string }
+        pod: { type: string }
+        vessel: { type: string }
+        eta: { type: string, format: date }
+        free_days: { type: integer, default: 5 }
+    ContainerCreate:
+      type: object
+      required: [shipment_id, code, size]
+      properties:
+        shipment_id: { type: integer }
+        code: { type: string, description: "ISO 6346 code ex: MSCU1234567" }
+        size: { type: string }

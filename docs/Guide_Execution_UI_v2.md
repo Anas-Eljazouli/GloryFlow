@@ -1,0 +1,1 @@
+Voir README pour les étapes. Ce guide reprend l'essentiel et détaille la navigation de l'interface.
