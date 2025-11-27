@@ -73,11 +73,12 @@ async function computeRisk(id){
   currentShipmentId = id;
   document.getElementById('containerShipmentId').value = id;
   navigateToPage('risque');
+  const daysLabel = r.days_left >= 0 ? r.days_left : `+${Math.abs(r.days_left)} jours de retard`;
   document.getElementById('riskContent').innerHTML = `
     <p><strong>Dossier:</strong> ${id}</p>
     <ul>
       <li><strong>Score:</strong> ${r.score}</li>
-      <li><strong>Jours restants:</strong> ${r.days_left}</li>
+      <li><strong>Jours restants:</strong> ${daysLabel}</li>
       <li><strong>Complétude docs:</strong> ${Math.round(r.docs_completeness*100)}%</li>
       <li><strong>Message:</strong> ${r.message}</li>
     </ul>`;
