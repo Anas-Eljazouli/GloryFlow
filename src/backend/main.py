@@ -62,11 +62,11 @@ def compute_demurrage_risk(db, shipment_row):
     msg = "OK"
     if days_left <= 3: msg = "Alerte J-3"
     if days_left <= 1: msg = "Alerte J-1"
-    customer_email = None
-    if hasattr(shipment_row, "keys") and "customer_email" in shipment_row.keys():
-        customer_email = shipment_row["customer_email"]
+    client_email = None
+    if hasattr(shipment_row, "keys") and "client_email" in shipment_row.keys():
+        client_email = shipment_row["client_email"]
     elif isinstance(shipment_row, dict):
-        customer_email = shipment_row.get("customer_email")
+        client_email = shipment_row.get("client_email")
     return {
         "shipment_id": shipment_row["id"],
         "reference": shipment_row["reference"],
@@ -75,7 +75,7 @@ def compute_demurrage_risk(db, shipment_row):
         "docs_completeness": round(completeness,2),
         "message": msg,
         "missing_docs": missing,
-        "customer_email": customer_email,
+        "client_email": client_email,
     }
 
 # ---------- Static Frontend ----------
@@ -102,17 +102,98 @@ def shipments():
     db = get_db()
     if request.method == "POST":
         data = request.json
-        cols = ("reference","direction","mode","customer_id","incoterm","pol","pod","vessel","eta","free_days")
-        values = [data.get(c) for c in cols]
+        cols = ("reference","direction","mode","client_id","shipping_line_id","incoterm","pol","pod","vessel","eta","free_days")
+        values = []
+        for c in cols:
+            v = data.get(c)
+            if c in ("client_id","shipping_line_id","free_days") and v not in (None, ""):
+                try:
+                    v = int(v)
+                except ValueError:
+                    pass
+            values.append(v)
         db.execute(
-            "INSERT INTO shipments(reference,direction,mode,customer_id,incoterm,pol,pod,vessel,eta,free_days) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO shipments(reference,direction,mode,client_id,shipping_line_id,incoterm,pol,pod,vessel,eta,free_days) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             values
         )
         db.commit()
         return {"message":"created"}, 201
     else:
-        rows = db.execute("SELECT * FROM shipments ORDER BY id DESC").fetchall()
+        rows = db.execute("""
+            SELECT s.*,
+                   c.name AS client_name,
+                   sl.name AS shipping_line_name,
+                   (SELECT COUNT(*) FROM containers co WHERE co.shipment_id = s.id) AS container_count
+            FROM shipments s
+            LEFT JOIN clients c ON s.client_id = c.id
+            LEFT JOIN shipping_lines sl ON s.shipping_line_id = sl.id
+            ORDER BY s.id DESC
+        """).fetchall()
         return jsonify([dict(r) for r in rows])
+
+@app.route("/clients", methods=["GET", "POST"])
+def clients():
+    db = get_db()
+    if request.method == "POST":
+        data = request.json
+        db.execute(
+            "INSERT INTO clients(name,email,phone) VALUES (?,?,?)",
+            (data.get("name"), data.get("email"), data.get("phone")),
+        )
+        db.commit()
+        return {"message": "created"}, 201
+    else:
+        rows = db.execute("SELECT * FROM clients ORDER BY name ASC").fetchall()
+        return jsonify([dict(r) for r in rows])
+
+@app.route("/clients/<int:cid>", methods=["PATCH", "DELETE"])
+def client_detail(cid):
+    db = get_db()
+    if request.method == "PATCH":
+        data = request.json
+        if not data:
+            return {"message": "nothing to update"}
+        keys = ", ".join([f"{k}=?" for k in data.keys()])
+        vals = list(data.values()) + [cid]
+        db.execute(f"UPDATE clients SET {keys} WHERE id=?", vals)
+        db.commit()
+        return {"message": "updated"}
+    else:
+        db.execute("DELETE FROM clients WHERE id=?", (cid,))
+        db.commit()
+        return {"message": "deleted"}
+
+@app.route("/shipping_lines", methods=["GET", "POST"])
+def shipping_lines():
+    db = get_db()
+    if request.method == "POST":
+        data = request.json
+        db.execute(
+            "INSERT INTO shipping_lines(name,email,phone) VALUES (?,?,?)",
+            (data.get("name"), data.get("email"), data.get("phone")),
+        )
+        db.commit()
+        return {"message": "created"}, 201
+    else:
+        rows = db.execute("SELECT * FROM shipping_lines ORDER BY name ASC").fetchall()
+        return jsonify([dict(r) for r in rows])
+
+@app.route("/shipping_lines/<int:sid>", methods=["PATCH", "DELETE"])
+def shipping_line_detail(sid):
+    db = get_db()
+    if request.method == "PATCH":
+        data = request.json
+        if not data:
+            return {"message": "nothing to update"}
+        keys = ", ".join([f"{k}=?" for k in data.keys()])
+        vals = list(data.values()) + [sid]
+        db.execute(f"UPDATE shipping_lines SET {keys} WHERE id=?", vals)
+        db.commit()
+        return {"message": "updated"}
+    else:
+        db.execute("DELETE FROM shipping_lines WHERE id=?", (sid,))
+        db.commit()
+        return {"message": "deleted"}
 
 @app.route("/shipments/<int:sid>", methods=["GET", "PATCH"])
 def shipment_detail(sid):
@@ -129,26 +210,72 @@ def shipment_detail(sid):
         db.commit()
         return {"message":"updated"}
 
-@app.route("/containers", methods=["POST"])
-def add_container():
+@app.route("/shipments/<int:sid>", methods=["DELETE"])
+def shipment_delete(sid):
     db = get_db()
-    data = request.json
-    code = data["code"]
-    # Validate ISO 6346 quickly
-    if len(code) != 11 or code[3] != "U":
-        return {"error":"Invalid code format"}, 400
-    owner = code[:3]
-    serial = code[4:10]
-    try:
-        check = int(code[-1])
-    except:
-        return {"error":"Invalid check digit"}, 400
-    if iso6346_check_digit(owner, serial) != check:
-        return {"error":"Invalid check digit"}, 400
-    db.execute("INSERT INTO containers(shipment_id, code, size) VALUES (?,?,?)",
-               (data["shipment_id"], code, data.get("size","40HC")))
+    db.execute("DELETE FROM shipments WHERE id=?", (sid,))
     db.commit()
-    return {"message":"created"}, 201
+    return {"message":"deleted"}
+
+@app.route("/containers", methods=["GET", "POST"])
+def containers():
+    db = get_db()
+    if request.method == "POST":
+        data = request.json
+        code = data["code"].strip().upper()
+        print("container code raw", repr(code))
+        # Validate ISO 6346 quickly
+        if len(code) != 11 or code[3] != "U":
+            return {"error":"Invalid code format"}, 400
+        owner = code[:3]
+        serial = code[4:10]
+        try:
+            check = int(code[-1])
+        except:
+            return {"error":"Invalid check digit"}, 400
+        if iso6346_check_digit(owner, serial) != check:
+            return {"error":"Invalid check digit"}, 400
+        try:
+            db.execute("INSERT INTO containers(shipment_id, code, size) VALUES (?,?,?)",
+                       (data["shipment_id"], code, data.get("size","40HC")))
+            db.commit()
+        except sqlite3.IntegrityError as exc:
+            return {"error": "Ce conteneur existe déjà."}, 400
+        return {"message":"created"}, 201
+    else:
+        sid = request.args.get("shipment_id")
+        if sid:
+            rows = db.execute("SELECT * FROM containers WHERE shipment_id=? ORDER BY id DESC", (sid,)).fetchall()
+        else:
+            rows = db.execute("SELECT * FROM containers ORDER BY id DESC").fetchall()
+        return jsonify([dict(r) for r in rows])
+
+@app.route("/containers/<int:cid>", methods=["PATCH","DELETE"])
+def container_detail(cid):
+    db = get_db()
+    if request.method == "PATCH":
+        data = request.json
+        if "code" in data:
+            code = data["code"]
+            if len(code) != 11 or code[3] != "U":
+                return {"error":"Invalid code format"}, 400
+            owner = code[:3]
+            serial = code[4:10]
+            try:
+                check = int(code[-1])
+            except:
+                return {"error":"Invalid check digit"}, 400
+            if iso6346_check_digit(owner, serial) != check:
+                return {"error":"Invalid check digit"}, 400
+        keys = ", ".join([f"{k}=?" for k in data.keys()])
+        vals = list(data.values()) + [cid]
+        db.execute(f"UPDATE containers SET {keys} WHERE id=?", vals)
+        db.commit()
+        return {"message":"updated"}
+    else:
+        db.execute("DELETE FROM containers WHERE id=?", (cid,))
+        db.commit()
+        return {"message":"deleted"}
 
 @app.route("/documents", methods=["GET","POST"])
 def documents():
@@ -171,9 +298,9 @@ def demurrage_risk():
     sid = int(request.args.get("shipment_id"))
     db = get_db()
     s = db.execute("""
-        SELECT s.id, s.reference, s.eta, s.free_days, p.email AS customer_email
+        SELECT s.id, s.reference, s.eta, s.free_days, c.email AS client_email
         FROM shipments s
-        LEFT JOIN partners p ON s.customer_id = p.id
+        LEFT JOIN clients c ON s.client_id = c.id
         WHERE s.id=?
     """, (sid,)).fetchone()
     if not s: return {"error":"not found"}, 404
@@ -188,9 +315,9 @@ def demurrage_risk_all():
     max_days_left = request.args.get("max_days_left")
     max_days_left = int(max_days_left) if max_days_left is not None else None
     rows = db.execute("""
-        SELECT s.id, s.reference, s.eta, s.free_days, p.email AS customer_email
+        SELECT s.id, s.reference, s.eta, s.free_days, c.email AS client_email
         FROM shipments s
-        LEFT JOIN partners p ON s.customer_id = p.id
+        LEFT JOIN clients c ON s.client_id = c.id
         ORDER BY s.id DESC
     """).fetchall()
     results = []
@@ -200,7 +327,7 @@ def demurrage_risk_all():
             continue
         if risk["score"] < min_score:
             continue
-        if max_days_left is not None and risk["days_left"] >= max_days_left:
+        if max_days_left is not None and risk["days_left"] > max_days_left:
             continue
         results.append(risk)
     return jsonify(results)
@@ -215,17 +342,22 @@ def seed():
         with open(path, newline='', encoding="utf-8") as f:
             return list(csv.DictReader(f))
     if n == 0:
-        partners = load_csv(os.path.join(base, "data", "partners.csv"))
-        for p in partners:
-            db.execute("INSERT INTO partners(name, type, email, phone) VALUES (?,?,?,?)",
-                       (p["name"], p["type"], p["email"], p["phone"]))
+        clients = load_csv(os.path.join(base, "data", "clients.csv"))
+        for c in clients:
+            db.execute("INSERT INTO clients(name, email, phone) VALUES (?,?,?)",
+                       (c["name"], c.get("email"), c.get("phone")))
+        shipping_lines = load_csv(os.path.join(base, "data", "shipping_lines.csv"))
+        for sl in shipping_lines:
+            db.execute("INSERT INTO shipping_lines(name, email, phone) VALUES (?,?,?)",
+                       (sl["name"], sl.get("email"), sl.get("phone")))
         shipments = load_csv(os.path.join(base, "data", "shipments.csv"))
         for s in shipments:
-            cols = ("reference","direction","mode","customer_id","incoterm","pol","pod","vessel","eta","free_days")
+            cols = ("reference","direction","mode","client_id","shipping_line_id","incoterm","pol","pod","vessel","eta","free_days")
             vals = [s[c] for c in cols]
             vals[3] = int(vals[3]) if vals[3] else None
-            vals[9] = int(vals[9]) if s["free_days"] else 5
-            db.execute("INSERT INTO shipments(reference,direction,mode,customer_id,incoterm,pol,pod,vessel,eta,free_days) VALUES (?,?,?,?,?,?,?,?,?,?)", vals)
+            vals[4] = int(vals[4]) if vals[4] else None
+            vals[10] = int(vals[10]) if s["free_days"] else 5
+            db.execute("INSERT INTO shipments(reference,direction,mode,client_id,shipping_line_id,incoterm,pol,pod,vessel,eta,free_days) VALUES (?,?,?,?,?,?,?,?,?,?,?)", vals)
         containers = load_csv(os.path.join(base, "data", "containers.csv"))
         ref_to_id = {r["reference"]: r["id"] for r in db.execute("SELECT id, reference FROM shipments").fetchall()}
         for c in containers:
