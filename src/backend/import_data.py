@@ -15,23 +15,31 @@ def run():
         cur.executescript(f.read())
     conn.commit()
 
-    # Insert partners
-    path = os.path.join(ROOT, "data", "partners.csv")
+    # Insert clients
+    path = os.path.join(ROOT, "data", "clients.csv")
     with open(path, newline='', encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     for r in rows:
-        cur.execute("INSERT INTO partners(name,type,email,phone) VALUES (?,?,?,?)",
-                    (r["name"], r["type"], r.get("email"), r.get("phone")))
+        cur.execute("INSERT INTO clients(name,email,phone) VALUES (?,?,?)",
+                    (r["name"], r.get("email"), r.get("phone")))
+
+    # Insert shipping lines
+    path = os.path.join(ROOT, "data", "shipping_lines.csv")
+    with open(path, newline='', encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        cur.execute("INSERT INTO shipping_lines(name,email,phone) VALUES (?,?,?)",
+                    (r["name"], r.get("email"), r.get("phone")))
 
     # Insert shipments
     path = os.path.join(ROOT, "data", "shipments.csv")
     with open(path, newline='', encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     for r in rows:
-        cur.execute("""INSERT INTO shipments(reference,direction,mode,customer_id,incoterm,pol,pod,vessel,eta,free_days)
-                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                    (r["reference"], r["direction"], r["mode"], r["customer_id"], r.get("incoterm"),
-                     r["pol"], r["pod"], r.get("vessel"), r["eta"], r.get("free_days")))
+        cur.execute("""INSERT INTO shipments(reference,direction,mode,client_id,shipping_line_id,incoterm,pol,pod,vessel,eta,free_days)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (r["reference"], r["direction"], r["mode"], r.get("client_id"), r.get("shipping_line_id"),
+                     r.get("incoterm"), r["pol"], r["pod"], r.get("vessel"), r["eta"], r.get("free_days")))
 
     # Insert containers
     path = os.path.join(ROOT, "data", "containers.csv")
@@ -47,7 +55,7 @@ def run():
     conn.commit()
     print("Import terminé.")
     # Show quick stats
-    for table in ("partners","shipments","containers"):
+    for table in ("clients","shipping_lines","shipments","containers"):
         n = cur.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         print(f"{table}: {n} lignes")
     conn.close()

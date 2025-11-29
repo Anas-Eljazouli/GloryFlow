@@ -2,9 +2,9 @@
 openapi: 3.1.3
 info:
   title: GLORYFlow API
-  version: 0.2.0
+  version: 0.3.0
 servers:
-  - url: http://localhost:8000
+  - url: http://localhost:5000
 paths:
   /health:
     get: { summary: Health check, responses: { '200': { description: OK } } }
@@ -33,7 +33,15 @@ paths:
           application/json:
             schema: { type: object }
       responses: { '200': { description: Updated } }
+    delete:
+      summary: Delete a shipment
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses: { '200': { description: Deleted } }
   /containers:
+    get:
+      summary: List containers (optionally by shipment)
+      parameters: [ { name: shipment_id, in: query, required: false, schema: { type: integer } } ]
+      responses: { '200': { description: OK } }
     post:
       summary: Attach a container (ISO 6346 validation)
       requestBody:
@@ -42,6 +50,20 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/ContainerCreate' }
       responses: { '201': { description: Created } }
+  /containers/{id}:
+    patch:
+      summary: Update a container (validates ISO 6346 if code changes)
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContainerUpdate' }
+      responses: { '200': { description: Updated } }
+    delete:
+      summary: Delete a container
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses: { '200': { description: Deleted } }
   /documents:
     get:
       summary: List documents of a shipment
@@ -62,21 +84,77 @@ paths:
       responses: { '201': { description: Created } }
   /admin/seed:
     post: { summary: Seed demo data from CSV files, responses: { '200': { description: OK } } }
+  /clients:
+    get: { summary: List clients, responses: { '200': { description: OK } } }
+    post:
+      summary: Create a client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClientCreate' }
+      responses: { '201': { description: Created } }
+  /clients/{id}:
+    patch:
+      summary: Update a client
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClientUpdate' }
+      responses: { '200': { description: Updated } }
+    delete:
+      summary: Delete a client
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses: { '200': { description: Deleted } }
+  /shipping_lines:
+    get: { summary: List shipping lines, responses: { '200': { description: OK } } }
+    post:
+      summary: Create a shipping line
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShippingLineCreate' }
+      responses: { '201': { description: Created } }
+  /shipping_lines/{id}:
+    patch:
+      summary: Update a shipping line
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShippingLineUpdate' }
+      responses: { '200': { description: Updated } }
+    delete:
+      summary: Delete a shipping line
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses: { '200': { description: Deleted } }
   /kpi/demurrage_risk:
     get:
       summary: Compute demurrage risk for a shipment
       parameters: [ { name: shipment_id, in: query, required: true, schema: { type: integer } } ]
       responses: { '200': { description: Score and message } }
+  /kpi/demurrage_risk_all:
+    get:
+      summary: Batch demurrage risk scores
+      parameters:
+        - { name: min_score, in: query, required: false, schema: { type: integer, minimum: 0, maximum: 100 }, description: "Return shipments with score >= min_score" }
+        - { name: max_days_left, in: query, required: false, schema: { type: integer }, description: "Filter by days_left <= value" }
+      responses: { '200': { description: List of risk objects } }
 components:
   schemas:
     ShipmentCreate:
       type: object
-      required: [reference, direction, customer_id, pol, pod, eta]
+      required: [reference, direction, client_id, shipping_line_id, pol, pod, eta]
       properties:
         reference: { type: string }
         direction: { type: string, enum: [import, export] }
         mode: { type: string, enum: [sea, air, road], default: sea }
-        customer_id: { type: integer }
+        client_id: { type: integer }
+        shipping_line_id: { type: integer }
         incoterm: { type: string }
         pol: { type: string }
         pod: { type: string }
@@ -90,3 +168,36 @@ components:
         shipment_id: { type: integer }
         code: { type: string, description: "ISO 6346 code ex: MSCU1234567" }
         size: { type: string }
+    ContainerUpdate:
+      type: object
+      properties:
+        shipment_id: { type: integer }
+        code: { type: string, description: "ISO 6346 code ex: MSCU1234567" }
+        size: { type: string }
+        status: { type: string, enum: [in_transit, delivered, delayed] }
+    ClientCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string }
+    ClientUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string }
+    ShippingLineCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string }
+    ShippingLineUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string }

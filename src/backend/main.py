@@ -6,11 +6,24 @@ DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "glo
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 REQUIRED_DOCS = {"BL","Invoice","PackingList"}
 
+# BIC-registered container owner codes (major shipping lines)
+VALID_OWNER_CODES = {
+    'MSC': 'MSC', 'MAE': 'Maersk', 'CMA': 'CMA CGM', 'CSC': 'COSCO', 'HAP': 'Hapag-Lloyd',
+    'ONE': 'Ocean Network Express', 'EGL': 'Evergreen', 'YML': 'Yang Ming', 'PIL': 'PIL',
+    'ZIM': 'ZIM', 'WAN': 'Wan Hai', 'HMM': 'HMM', 'MSK': 'Maersk', 'SEA': 'SeaLand',
+    'NYK': 'NYK Line', 'MOL': 'MOL', 'KLI': 'K Line', 'APL': 'APL', 'OOC': 'OOCL',
+    'ACL': 'ACL', 'HLC': 'Hapag-Lloyd', 'COS': 'COSCO', 'CHI': 'China Shipping',
+    'TEX': 'Textainer', 'TRI': 'Triton', 'CAI': 'CAI', 'FSC': 'Florens', 'GEI': 'Seaco',
+    'TGH': 'Touax', 'TEM': 'Textainer', 'SUD': 'Seacube', 'OOL': 'OOCL'
+}
+
 app = Flask(__name__, static_folder=None, static_url_path=None)
 
 def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(DB_PATH)
+        # Enforce foreign key constraints for this connection
+        g.db.execute("PRAGMA foreign_keys = ON")
         g.db.row_factory = sqlite3.Row
     return g.db
 
@@ -20,13 +33,17 @@ def close_db(e=None):
     if db is not None:
         db.close()
 
+def apply_schema(db):
+    schema_path = os.path.abspath(os.path.join(os.path.dirname(__file__),"..","..","db","schema.sql"))
+    with open(schema_path, "r", encoding="utf-8") as f:
+        schema = f.read()
+    db.executescript(schema)
+    db.commit()
+
 def init_db():
     with app.app_context():
         db = get_db()
-        schema_path = os.path.abspath(os.path.join(os.path.dirname(__file__),"..","..","db","schema.sql"))
-        schema = open(schema_path, "r", encoding="utf-8").read()
-        db.executescript(schema)
-        db.commit()
+        apply_schema(db)
 
 def iso6346_check_digit(owner, serial):
     letter_vals = {}
@@ -224,17 +241,22 @@ def containers():
         data = request.json
         code = data["code"].strip().upper()
         print("container code raw", repr(code))
-        # Validate ISO 6346 quickly
-        if len(code) != 11 or code[3] != "U":
-            return {"error":"Invalid code format"}, 400
+        # Validate ISO 6346 format and BIC registration
+        if len(code) != 11:
+            return {"error":f"Format invalide: le code doit contenir 11 caractères (reçu {len(code)})"},400
         owner = code[:3]
+        if owner not in VALID_OWNER_CODES:
+            return {"error":f"Code propriétaire '{owner}' non reconnu. Utilisez un code enregistré BIC (ex: MSC, MAE, CMA, ONE, etc.)"},400
+        if code[3] != "U":
+            return {"error":"Format invalide: le 4ème caractère doit être 'U' (catégorie équipement)"},400
         serial = code[4:10]
         try:
             check = int(code[-1])
         except:
-            return {"error":"Invalid check digit"}, 400
-        if iso6346_check_digit(owner, serial) != check:
-            return {"error":"Invalid check digit"}, 400
+            return {"error":"Format invalide: le dernier caractère doit être un chiffre"},400
+        expected_check = iso6346_check_digit(owner, serial)
+        if expected_check != check:
+            return {"error":f"Chiffre de contrôle invalide: attendu {expected_check}. Code valide: {owner}U{serial}{expected_check}"},400
         try:
             db.execute("INSERT INTO containers(shipment_id, code, size) VALUES (?,?,?)",
                        (data["shipment_id"], code, data.get("size","40HC")))
@@ -335,6 +357,8 @@ def demurrage_risk_all():
 @app.route("/admin/seed", methods=["POST"])
 def seed():
     db = get_db()
+    # Ensure schema exists before seeding to avoid 'no such table' errors
+    apply_schema(db)
     n = db.execute("SELECT COUNT(*) as c FROM shipments").fetchone()["c"]
     base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..",".."))
     def load_csv(path):
@@ -374,8 +398,14 @@ if __name__ == "__main__":
     print(f"Frontend directory: {FRONTEND_DIR}")
     print(f"DB Path: {DB_PATH}")
     if not os.path.exists(DB_PATH):
-        print("Initializing database...")
+        print("Initializing database (file did not exist)...")
         init_db()
+    else:
+        # Always ensure schema exists/updated (idempotent due to IF NOT EXISTS)
+        print("Ensuring database schema is present...")
+        with app.app_context():
+            db = get_db()
+            apply_schema(db)
     port = int(os.environ.get("PORT", 5000))
     host = os.environ.get("HOST", "0.0.0.0")
     print(f"Starting Flask server on http://{host}:{port}")

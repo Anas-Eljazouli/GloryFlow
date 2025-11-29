@@ -1,5 +1,8 @@
 let currentShipmentId = null;
 let shipmentsData = [];
+let clientsData = [];
+let shippingLinesData = [];
+let containersData = [];
 let filters = { direction: 'any', modes: [], eta_min: '', eta_max: '', fd_min: '', fd_max: '' };
 let currentPage = 'dossiers';
 
@@ -21,6 +24,26 @@ function el(html){
 async function loadShipments(){
   shipmentsData = await fetchJSON('/shipments');
   renderShipments();
+}
+
+async function loadContainers(){
+  containersData = await fetchJSON('/containers');
+  renderContainers();
+}
+
+async function loadClientsAndLines(){
+  clientsData = await fetchJSON('/clients');
+  shippingLinesData = await fetchJSON('/shipping_lines');
+  const clientSelect = document.getElementById('clientSelect');
+  const shippingLineSelect = document.getElementById('shippingLineSelect');
+  if(clientSelect){
+    clientSelect.innerHTML = '<option value=\"\">-- Sélectionner --</option>' +
+      clientsData.map(c => `<option value=\"${c.id}\">${c.name}</option>`).join('');
+  }
+  if(shippingLineSelect){
+    shippingLineSelect.innerHTML = '<option value=\"\">-- Sélectionner --</option>' +
+      shippingLinesData.map(sl => `<option value=\"${sl.id}\">${sl.name}</option>`).join('');
+  }
 }
 
 function renderShipments(filterText=''){
@@ -51,6 +74,9 @@ function renderShipments(filterText=''){
         <td><strong>${s.reference}</strong></td>
         <td><span class="badge">${s.direction}</span></td>
         <td><span class="route">${s.pol} → ${s.pod}</span></td>
+        <td>${s.client_name ?? ''}</td>
+        <td>${s.shipping_line_name ?? ''}</td>
+        <td>${s.container_count ?? 0}</td>
         <td>${s.eta ?? ''}</td>
         <td>${s.free_days ?? ''}</td>
         <td class="actionsRow"></td>
@@ -60,18 +86,41 @@ function renderShipments(filterText=''){
       riskBtn.onclick = () => computeRisk(s.id);
       const docsBtn = el(`<button class="secondary">Docs</button>`);
       docsBtn.onclick = () => loadDocs(s.id);
-      const contBtn = el(`<button>Ajouter conteneur</button>`);
-      contBtn.onclick = () => openContainerModal(s.id);
-      actions.append(riskBtn, docsBtn, contBtn);
+      const editBtn = el(`<button class="secondary">Modifier</button>`);
+      editBtn.onclick = () => openEditShipmentModal(s);
+      const delBtn = el(`<button class="ghost">Supprimer</button>`);
+      delBtn.onclick = () => deleteShipment(s.id);
+      actions.append(riskBtn, docsBtn, editBtn, delBtn);
       tbody.appendChild(row);
     });
   highlightSelected(currentShipmentId);
 }
 
+function openEditShipmentModal(s){
+  const modal = document.getElementById('editShipmentModal');
+  document.getElementById('editShipmentId').value = s.id;
+  document.getElementById('editReference').value = s.reference || '';
+  document.getElementById('editDirection').value = s.direction || 'import';
+  document.getElementById('editMode').value = s.mode || 'sea';
+  document.getElementById('editIncoterm').value = s.incoterm || '';
+  document.getElementById('editPol').value = s.pol || '';
+  document.getElementById('editPod').value = s.pod || '';
+  document.getElementById('editVessel').value = s.vessel || '';
+  document.getElementById('editEta').value = s.eta || '';
+  document.getElementById('editFreeDays').value = s.free_days ?? '';
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden','false');
+}
+
+function closeEditShipmentModal(){
+  const modal = document.getElementById('editShipmentModal');
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden','true');
+}
+
 async function computeRisk(id){
   const r = await fetchJSON(`/kpi/demurrage_risk?shipment_id=${id}`);
   currentShipmentId = id;
-  document.getElementById('containerShipmentId').value = id;
   navigateToPage('risque');
   const daysLabel = r.days_left >= 0 ? r.days_left : `+${Math.abs(r.days_left)} jours de retard`;
   document.getElementById('riskContent').innerHTML = `
@@ -87,7 +136,6 @@ async function computeRisk(id){
 
 async function loadDocs(id){
   currentShipmentId = id;
-  document.getElementById('containerShipmentId').value = id;
   navigateToPage('risque');
   const docs = await fetchJSON(`/documents?shipment_id=${id}`);
   const have = new Set(docs.map(d => d.type));
@@ -116,31 +164,75 @@ async function loadDocs(id){
   highlightSelected(id);
 }
 
-function selectShipmentForContainer(id){
-  currentShipmentId = id;
-  document.getElementById('containerShipmentId').value = id;
-  document.getElementById('riskContent').innerHTML = `<p>Dossier sélectionné: <strong>${id}</strong>. Vous pouvez maintenant ajouter un conteneur ISO 6346.</p>`;
-  highlightSelected(id);
+// Container add form (now only on Conteneurs page)
+const VALID_OWNER_CODES = new Set([
+  'MSC','MAE','CMA','CSC','HAP','ONE','EGL','YML','PIL','ZIM','WAN','HMM','MSK','SEA',
+  'NYK','MOL','KLI','APL','OOC','ACL','HLC','COS','CHI','TEX','TRI','CAI','FSC','GEI',
+  'TGH','TEM','SUD','OOL'
+]);
+function computeIsoCheckDigit(owner, serial){
+  const letterVals = {}; let val = 10;
+  for(const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'){
+    letterVals[ch] = val; val++; if(val % 11 === 0) val++;
+  }
+  const code = owner + 'U' + serial;
+  let total = 0;
+  for(let i=0;i<code.length;i++){
+    const ch = code[i];
+    const v = /[A-Z]/.test(ch) ? letterVals[ch] : parseInt(ch,10);
+    total += v * (2**i);
+  }
+  const remainder = total % 11;
+  return remainder === 10 ? 0 : remainder;
 }
-
 async function addContainer(e){
   e.preventDefault();
   const fd = new FormData(e.target);
   const payload = Object.fromEntries(fd.entries());
-  payload.shipment_id = parseInt(payload.shipment_id || currentShipmentId, 10);
-  await fetchJSON('/containers', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(payload)
-  });
-  alert('Conteneur ajouté.');
-  e.target.reset();
+  payload.shipment_id = parseInt(payload.shipment_id || currentShipmentId || '0', 10);
+  if(payload.code){
+    payload.code = payload.code.trim().toUpperCase();
+    // Validate & give user-friendly message before sending
+    if(payload.code.length === 11){
+      const owner = payload.code.slice(0,3);
+      const category = payload.code[3];
+      const serial = payload.code.slice(4,10);
+      const providedDigit = payload.code.slice(10);
+      // Check BIC registration
+      if(!VALID_OWNER_CODES.has(owner)){
+        alert(`Code propriétaire '${owner}' non reconnu. Utilisez un code enregistré BIC (ex: MSC, MAE, CMA, ONE, HAP, etc.)`);
+        return;
+      }
+      if(category === 'U'){
+        const expected = computeIsoCheckDigit(owner, serial);
+        if(String(expected) !== providedDigit){
+          alert(`Code conteneur invalide: chiffre de contrôle attendu ${expected}. Utilisez ${owner}U${serial}${expected}`);
+          return; // Stop submission
+        }
+      }
+    }
+  }
+  console.log('Submitting container payload', payload);
+  try{
+    await fetchJSON('/containers',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    alert('Conteneur ajouté.');
+    e.target.reset();
+    await loadContainers();
+  } catch(err){
+    console.error('Échec ajout conteneur', err);
+    alert(err.message || 'Erreur lors de l’ajout du conteneur');
+  }
 }
-
 async function createShipment(e){
   e.preventDefault();
   const fd = new FormData(e.target);
   const payload = Object.fromEntries(fd.entries());
-  payload.customer_id = parseInt(payload.customer_id || '2', 10);
+  payload.client_id = parseInt(payload.client_id || '1', 10);
+  payload.shipping_line_id = parseInt(payload.shipping_line_id || '1', 10);
   payload.free_days = parseInt(payload.free_days || '7', 10);
   await fetchJSON('/shipments', {
     method:'POST', headers:{'Content-Type':'application/json'},
@@ -153,14 +245,212 @@ async function createShipment(e){
 }
 
 async function seedDemo(){
-  await fetchJSON('/admin/seed', { method:'POST' });
+  try {
+    await fetchJSON('/admin/seed', { method:'POST' });
+    await Promise.all([loadShipments(), refreshReferenceData(), loadContainers()]);
+    alert('Données démo chargées.');
+  } catch (err) {
+    console.error('Seed failed', err);
+    alert('Échec du chargement des données démo : ' + err.message);
+  }
+}
+
+async function refreshReferenceData(){
+  await loadClientsAndLines();
+  renderClientsTable();
+  renderShippingLinesTable();
+}
+
+function renderClientsTable(){
+  const tbody = document.querySelector('#clientsTable tbody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+  clientsData.forEach(c => {
+    const row = el(`<tr>
+      <td>${c.name}</td>
+      <td>${c.email ?? ''}</td>
+      <td>${c.phone ?? ''}</td>
+      <td><button class="ghost" data-action="delete" data-type="client" data-id="${c.id}">Supprimer</button></td>
+    </tr>`);
+    tbody.appendChild(row);
+  });
+}
+
+function renderShippingLinesTable(){
+  const tbody = document.querySelector('#shippingLinesTable tbody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+  shippingLinesData.forEach(sl => {
+    const row = el(`<tr>
+      <td>${sl.name}</td>
+      <td>${sl.email ?? ''}</td>
+      <td>${sl.phone ?? ''}</td>
+      <td><button class="ghost" data-action="delete" data-type="shipping_line" data-id="${sl.id}">Supprimer</button></td>
+    </tr>`);
+    tbody.appendChild(row);
+  });
+}
+
+async function addClient(e){
+  e.preventDefault();
+  const payload = Object.fromEntries(new FormData(e.target).entries());
+  await fetchJSON('/clients', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  e.target.reset();
+  await refreshReferenceData();
+}
+
+async function addShippingLine(e){
+  e.preventDefault();
+  const payload = Object.fromEntries(new FormData(e.target).entries());
+  await fetchJSON('/shipping_lines', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  e.target.reset();
+  await refreshReferenceData();
+}
+
+async function handleDeleteReference(type, id){
+  if(!id) return;
+  const endpoint = type === 'client' ? `/clients/${id}` : `/shipping_lines/${id}`;
+  await fetchJSON(endpoint, { method:'DELETE' });
+  await refreshReferenceData();
+}
+
+async function saveShipmentEdits(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const payload = Object.fromEntries(fd.entries());
+  const sid = payload.id;
+  delete payload.id;
+  payload.free_days = payload.free_days ? parseInt(payload.free_days, 10) : null;
+  await fetchJSON(`/shipments/${sid}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  closeEditShipmentModal();
   await loadShipments();
+}
+
+async function deleteShipment(id){
+  if(!confirm('Supprimer ce dossier ?')) return;
+  await fetchJSON(`/shipments/${id}`, { method:'DELETE' });
+  await loadShipments();
+}
+
+function renderContainers(){
+  const tbody = document.querySelector('#containersTable tbody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+  containersData.forEach(c => {
+    const row = el(`<tr>
+      <td>${c.id}</td>
+      <td>${c.shipment_id}</td>
+      <td>${c.code}</td>
+      <td>${c.size ?? ''}</td>
+      <td>${c.status ?? ''}</td>
+      <td class="actionsRow"></td>
+    </tr>`);
+    const actions = row.querySelector('.actionsRow');
+    const editBtn = el(`<button class="secondary">Modifier</button>`);
+    editBtn.onclick = () => openEditContainerModal(c);
+    const delBtn = el(`<button class="ghost" data-action="delete" data-type="container" data-id="${c.id}">Supprimer</button>`);
+    delBtn.onclick = () => deleteContainer(c.id);
+    actions.append(editBtn, delBtn);
+    tbody.appendChild(row);
+  });
+}
+
+function openEditContainerModal(c){
+  const modal = document.getElementById('editContainerModal');
+  document.getElementById('editContainerId').value = c.id;
+  document.getElementById('editContainerCode').value = c.code || '';
+  document.getElementById('editContainerSize').value = c.size || '';
+  document.getElementById('editContainerStatus').value = c.status || 'full';
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden','false');
+}
+
+function closeEditContainerModal(){
+  const modal = document.getElementById('editContainerModal');
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden','true');
+}
+
+async function saveContainerEdits(e){
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const payload = Object.fromEntries(fd.entries());
+  const cid = payload.id;
+  delete payload.id;
+  payload.shipment_id = payload.shipment_id ? parseInt(payload.shipment_id, 10) : null;
+  await fetchJSON(`/containers/${cid}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  closeEditContainerModal();
+  await loadContainers();
+}
+
+async function deleteContainer(id){
+  if(!confirm('Supprimer ce conteneur ?')) return;
+  await fetchJSON(`/containers/${id}`, { method:'DELETE' });
+  await loadContainers();
 }
 
 document.getElementById('addContainerForm').addEventListener('submit', addContainer);
 document.getElementById('createShipmentForm').addEventListener('submit', createShipment);
 document.getElementById('seedBtn').addEventListener('click', seedDemo);
 document.getElementById('refreshBtn').addEventListener('click', loadShipments);
+const addClientForm = document.getElementById('addClientForm');
+if(addClientForm){ addClientForm.addEventListener('submit', addClient); }
+const addShippingLineForm = document.getElementById('addShippingLineForm');
+if(addShippingLineForm){ addShippingLineForm.addEventListener('submit', addShippingLine); }
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action="delete"]');
+  if(!btn) return;
+  const type = btn.getAttribute('data-type');
+  const id = btn.getAttribute('data-id');
+  if(type === 'container'){
+    if(confirm('Supprimer ce conteneur ?')) deleteContainer(id);
+    return;
+  }
+  if(confirm('Supprimer cet enregistrement ?')){
+    handleDeleteReference(type, id).catch(err => alert(err.message));
+  }
+});
+
+const editShipmentModal = document.getElementById('editShipmentModal');
+const closeEditShipmentBtn = document.getElementById('closeEditShipmentBtn');
+const cancelEditShipmentBtn = document.getElementById('cancelEditShipmentBtn');
+if(closeEditShipmentBtn){ closeEditShipmentBtn.addEventListener('click', closeEditShipmentModal); }
+if(cancelEditShipmentBtn){ cancelEditShipmentBtn.addEventListener('click', closeEditShipmentModal); }
+if(editShipmentModal){
+  editShipmentModal.addEventListener('click', (e) => {
+    if(e.target.hasAttribute('data-close')) closeEditShipmentModal();
+  });
+}
+const editShipmentForm = document.getElementById('editShipmentForm');
+if(editShipmentForm){
+  editShipmentForm.addEventListener('submit', saveShipmentEdits);
+}
+
+const editContainerModal = document.getElementById('editContainerModal');
+const closeEditContainerBtn = document.getElementById('closeEditContainerBtn');
+const cancelEditContainerBtn = document.getElementById('cancelEditContainerBtn');
+if(closeEditContainerBtn){ closeEditContainerBtn.addEventListener('click', closeEditContainerModal); }
+if(cancelEditContainerBtn){ cancelEditContainerBtn.addEventListener('click', closeEditContainerModal); }
+if(editContainerModal){
+  editContainerModal.addEventListener('click', (e) => { if(e.target.hasAttribute('data-close')) closeEditContainerModal(); });
+}
+const editContainerForm = document.getElementById('editContainerForm');
+if(editContainerForm){
+  editContainerForm.addEventListener('submit', saveContainerEdits);
+}
 
 // UI Toggles: compact density
 const densePrefKey = 'ui.compact';
@@ -199,47 +489,6 @@ function highlightSelected(id){
 }
 
 applyPrefs();
-
-// Modal logic: Add container
-const modal = document.getElementById('containerModal');
-const closeModalBtn = document.getElementById('closeModalBtn');
-const cancelModalBtn = document.getElementById('cancelModalBtn');
-const modalForm = document.getElementById('modalAddContainerForm');
-const modalShipmentIdInput = document.getElementById('modalShipmentId');
-
-function openContainerModal(shipmentId){
-  currentShipmentId = shipmentId;
-  modalShipmentIdInput.value = shipmentId;
-  modal.classList.add('open');
-  modal.setAttribute('aria-hidden','false');
-  document.getElementById('modalCode').focus();
-}
-function closeContainerModal(){
-  modal.classList.remove('open');
-  modal.setAttribute('aria-hidden','true');
-}
-
-modal.addEventListener('click', (e) => {
-  if(e.target.hasAttribute('data-close')) closeContainerModal();
-});
-closeModalBtn.addEventListener('click', closeContainerModal);
-cancelModalBtn.addEventListener('click', closeContainerModal);
-window.addEventListener('keydown', (e) => { if(e.key === 'Escape' && modal.classList.contains('open')) closeContainerModal(); });
-
-modalForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const fd = new FormData(modalForm);
-  const payload = Object.fromEntries(fd.entries());
-  payload.shipment_id = parseInt(payload.shipment_id || currentShipmentId, 10);
-  await fetchJSON('/containers', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(payload)
-  });
-  closeContainerModal();
-  alert('Conteneur ajouté.');
-  await loadShipments();
-  highlightSelected(payload.shipment_id);
-});
 
 // Filters drawer logic
 const drawer = document.getElementById('filtersDrawer');
@@ -297,7 +546,9 @@ clearFiltersBtn.addEventListener('click', () => {
 const pageTitles = {
   'dossiers': 'Dossiers',
   'nouveau': 'Nouveau dossier',
-  'risque': 'Risque & Documents'
+  'risque': 'Risque & Documents',
+  'containers': 'Conteneurs',
+  'admin': 'Administration'
 };
 
 function navigateToPage(pageId){
@@ -338,6 +589,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize on first page
   navigateToPage('dossiers');
   
-  // Load shipments data
-  loadShipments().catch(err => console.error(err));
+  // Load lookup data and shipments
+  Promise.all([refreshReferenceData(), loadShipments(), loadContainers()]).catch(err => console.error(err));
 });
+
+
+
+

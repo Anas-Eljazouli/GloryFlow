@@ -69,7 +69,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\"reference\": \"BJG-2025999\", \"direction\": \"import\", \"mode\": \"sea\", \"customer_id\": 2, \"incoterm\": \"FOB\", \"pol\": \"Shanghai\", \"pod\": \"Casablanca\", \"vessel\": \"MSC Zoe\", \"eta\": \"2025-08-05\", \"free_days\": 7}"
+          "raw": "{\"reference\": \"BJG-2025999\", \"direction\": \"import\", \"mode\": \"sea\", \"client_id\": 1, \"shipping_line_id\": 1, \"incoterm\": \"FOB\", \"pol\": \"Shanghai\", \"pod\": \"Casablanca\", \"vessel\": \"MSC Zoe\", \"eta\": \"2025-08-05\", \"free_days\": 7}"
         },
         "url": {
           "raw": "http://localhost:8000/shipments",

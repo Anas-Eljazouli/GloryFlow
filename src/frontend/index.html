@@ -16,16 +16,24 @@
   </div>
   <nav class="sidebar-nav">
     <a href="#" class="nav-item active" data-page="dossiers">
-      <span class="nav-icon">📋</span>
+      <span class="nav-icon">[D]</span>
       <span>Dossiers</span>
     </a>
     <a href="#" class="nav-item" data-page="nouveau">
-      <span class="nav-icon">➕</span>
+      <span class="nav-icon">[+]</span>
       <span>Nouveau dossier</span>
     </a>
     <a href="#" class="nav-item" data-page="risque">
-      <span class="nav-icon">⚠️</span>
+      <span class="nav-icon">[!]</span>
       <span>Risque & Documents</span>
+    </a>
+    <a href="#" class="nav-item" data-page="containers">
+      <span class="nav-icon">[C]</span>
+      <span>Conteneurs</span>
+    </a>
+    <a href="#" class="nav-item" data-page="admin">
+      <span class="nav-icon">[A]</span>
+      <span>Clients & Compagnies maritimes</span>
     </a>
   </nav>
   <div class="sidebar-footer">
@@ -100,7 +108,7 @@
         <table id="shipmentsTable">
           <thead>
             <tr>
-              <th>#</th><th>Référence</th><th>Direction</th><th>Route</th><th>ETA</th><th>Free days</th><th>Actions</th>
+              <th>#</th><th>Référence</th><th>Direction</th><th>Route</th><th>Client</th><th>Compagnie maritime</th><th>Nb conteneurs</th><th>ETA</th><th>Free days</th><th>Actions</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -122,7 +130,16 @@
           <label>Mode
             <select name="mode"><option>sea</option><option>air</option><option>road</option></select>
           </label>
-          <label>Client (id) <input name="customer_id" type="number" value="2" min="1"></label>
+          <label>Client
+            <select name="client_id" id="clientSelect" required>
+              <option value="">-- Sélectionner --</option>
+            </select>
+          </label>
+          <label>Compagnie maritime
+            <select name="shipping_line_id" id="shippingLineSelect" required>
+              <option value="">-- Sélectionner --</option>
+            </select>
+          </label>
           <label>Incoterm <input name="incoterm" placeholder="FOB/CIF/EXW"></label>
           <label>POL <input name="pol" placeholder="Shanghai"></label>
           <label>POD <input name="pod" placeholder="Casablanca"></label>
@@ -146,44 +163,128 @@
         <h3 class="section-title">Documents (BL, Invoice, Packing List)</h3>
         <div id="docsContent" class="content-box"><p>Sélectionnez un dossier puis cliquez <em>Docs</em>.</p></div>
       </section>
+      </div>
+  </div>
+
+  <!-- Page: Conteneurs -->
+  <div class="page" id="page-containers">
+    <section class="panel">
+      <h3 class="section-title">Conteneurs</h3>
+      <form id="addContainerForm" class="form-inline">
+        <input type="number" name="shipment_id" placeholder="Shipment ID" required min="1">
+        <input name="code" placeholder="MSCU1234567" required>
+        <input name="size" placeholder="40HC" required>
+        <button type="submit" class="btn-primary">Ajouter</button>
+      </form>
+      <div class="table-container">
+        <table id="containersTable">
+          <thead>
+            <tr><th>ID</th><th>Shipment</th><th>Code</th><th>Taille</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+  <!-- Page: Administration -->
+  <div class="page" id="page-admin">
+    <div class="admin-layout">
       <section class="panel">
-        <h3 class="section-title">Ajouter un conteneur</h3>
-        <form id="addContainerForm">
-          <input type="hidden" name="shipment_id" id="containerShipmentId">
-          <label>Code conteneur (ISO 6346) <input name="code" placeholder="MSCU1234567" required></label>
-          <label>Taille <input name="size" placeholder="40HC" required></label>
-          <button type="submit" class="btn-primary">Ajouter</button>
-          <p class="hint">Astuce : utilisez un code valide des données démo.</p>
+        <h3 class="section-title">Clients</h3>
+        <form id="addClientForm" class="form-inline">
+          <input name="name" placeholder="Nom du client" required>
+          <input name="email" placeholder="Email">
+          <input name="phone" placeholder="Téléphone">
+          <button type="submit">Ajouter</button>
         </form>
+        <div class="table-container">
+          <table id="clientsTable">
+            <thead>
+              <tr><th>Nom</th><th>Email</th><th>Téléphone</th><th>Actions</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="panel">
+        <h3 class="section-title">Compagnies maritimes</h3>
+        <form id="addShippingLineForm" class="form-inline">
+          <input name="name" placeholder="Nom de la compagnie" required>
+          <input name="email" placeholder="Email">
+          <input name="phone" placeholder="Téléphone">
+          <button type="submit">Ajouter</button>
+        </form>
+        <div class="table-container">
+          <table id="shippingLinesTable">
+            <thead>
+              <tr><th>Nom</th><th>Email</th><th>Téléphone</th><th>Actions</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </section>
     </div>
   </div>
 </main>
 
-<!-- Modal: Ajouter un conteneur -->
-<div id="containerModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+<!-- Modal: Edit shipment -->
+<div id="editShipmentModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="editShipmentTitle">
   <div class="modal-backdrop" data-close></div>
   <div class="modal-card" role="document">
     <div class="modal-header">
-      <h3 id="modalTitle">Ajouter un conteneur</h3>
-      <button class="ghost" id="closeModalBtn" aria-label="Fermer">✕</button>
+      <h3 id="editShipmentTitle">Modifier un dossier</h3>
+      <button class="ghost" id="closeEditShipmentBtn" aria-label="Fermer">✕</button>
     </div>
-    <form id="modalAddContainerForm" class="modal-body">
-      <input type="hidden" name="shipment_id" id="modalShipmentId">
-      <label>Code conteneur (ISO 6346)
-        <input name="code" id="modalCode" placeholder="MSCU1234567" required>
+    <form id="editShipmentForm" class="modal-body">
+      <input type="hidden" name="id" id="editShipmentId">
+      <label>Référence <input name="reference" id="editReference" required></label>
+      <label>Direction 
+        <select name="direction" id="editDirection"><option>import</option><option>export</option></select>
       </label>
-      <label>Taille
-        <input name="size" id="modalSize" placeholder="40HC" required>
+      <label>Mode
+        <select name="mode" id="editMode"><option>sea</option><option>air</option><option>road</option></select>
       </label>
+      <label>Incoterm <input name="incoterm" id="editIncoterm"></label>
+      <label>POL <input name="pol" id="editPol"></label>
+      <label>POD <input name="pod" id="editPod"></label>
+      <label>Navire <input name="vessel" id="editVessel"></label>
+      <label>ETA <input name="eta" id="editEta" type="date" required></label>
+      <label>Free days <input name="free_days" id="editFreeDays" type="number" min="0"></label>
       <div class="modal-actions">
-        <button type="button" class="ghost" id="cancelModalBtn">Annuler</button>
-        <button type="submit">Ajouter</button>
+        <button type="button" class="ghost" id="cancelEditShipmentBtn">Annuler</button>
+        <button type="submit">Enregistrer</button>
       </div>
     </form>
   </div>
 </div>
 
+<!-- Modal: Edit container -->
+<div id="editContainerModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="editContainerTitle">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-card" role="document">
+    <div class="modal-header">
+      <h3 id="editContainerTitle">Modifier un conteneur</h3>
+      <button class="ghost" id="closeEditContainerBtn" aria-label="Fermer">x</button>
+    </div>
+    <form id="editContainerForm" class="modal-body">
+      <input type="hidden" name="id" id="editContainerId">
+      <label>Shipment ID <input type="number" name="shipment_id" id="editContainerShipmentId" required></label>
+      <label>Code <input name="code" id="editContainerCode" required></label>
+      <label>Taille <input name="size" id="editContainerSize" required></label>
+      <label>Status
+        <select name="status" id="editContainerStatus">
+          <option>full</option><option>empty</option><option>released</option><option>gate_out</option>
+        </select>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="cancelEditContainerBtn">Annuler</button>
+        <button type="submit">Enregistrer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Footer kept at bottom inside main flex container -->
 <footer class="dashboard-footer"><small>Prototype académique — ENSEM • GLORYFlow</small></footer>
 <script src="/static/app.js"></script>
 </body></html>
